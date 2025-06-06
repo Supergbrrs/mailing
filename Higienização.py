@@ -1,4 +1,20 @@
 import streamlit as st
+
+hide_streamlit_style = """
+    <style>
+    /* Esconder menu hamburguer */
+    #MainMenu {visibility: hidden;}
+    /* Esconder rodapé */
+    footer {visibility: hidden;}
+    /* Esconder ícone GitHub (normalmente dentro de header) */
+    header > div:nth-child(1) {visibility: hidden;}
+    </style>
+"""
+
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
+
+import streamlit as st
 import pandas as pd
 import re
 import os
