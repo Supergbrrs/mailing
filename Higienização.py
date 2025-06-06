@@ -4,24 +4,6 @@ import re
 import os
 import requests
 
-import streamlit as st
-
-hide_streamlit_style = """
-    <style>
-    /* Esconder menu hamburguer */
-    #MainMenu {visibility: hidden;}
-    /* Esconder rodapé */
-    footer {visibility: hidden;}
-    /* Esconder ícone GitHub (normalmente dentro de header) */
-    header > div:nth-child(1) {visibility: hidden;}
-    </style>
-"""
-
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-
-
-
-
 # Função para baixar blacklist do Google Drive (cache local)
 @st.cache_data(show_spinner=False)
 def carregar_blacklist_google_drive(google_drive_id):
