@@ -107,7 +107,7 @@ if uploaded_file:
                 for col in colunas_telefone:
                     valids = df[col].apply(validar_numero)
                     total_validos += (valids == "Válido").sum()
-                    total_invalidos += (validar_numero(x) == "Inválido" for x in df[col]).__reduce__(lambda x, y: x + y)
+                    total_invalidos += (valids == "Inválido").sum()
 
                 st.write("📊 **Resumo Estatístico:**")
                 st.write(f"✅ Números válidos após higienização: **{total_validos}**")
