@@ -3,45 +3,57 @@ import pandas as pd
 import re
 import requests
 from io import BytesIO
+from io import StringIO
 
-# --- CONFIGURAÇÃO ---
-st.set_page_config(page_title="Higienização de Mailing", layout="wide")
+# Função para carregar arquivos
+@st.cache_data(show_spinner=False)
+def carregar_arquivo(uploaded_file):
+    if uploaded_file is not None:
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file, header=None, dtype=str)
+            if df.shape[1] == 1:
+                df = df.iloc[:, 0].str.split(';', expand=True)
+                df.columns = df.iloc[0]
+                df = df.iloc[1:].reset_index(drop=True)
+        elif uploaded_file.name.endswith('.xlsx'):
+            df = pd.read_excel(uploaded_file, dtype=str)
+        else:
+            st.error("Formato de arquivo não suportado! Envie um CSV ou XLSX.")
+            return None
 
-# --- CARREGAR BLACKLIST DO GOOGLE DRIVE ---
-@st.cache_data(show_spinner="🔄 Baixando blacklist...")
+        df.columns = df.columns.fillna('')
+        novas_colunas = []
+        vazio_count = 1
+        col_renomeadas = False
+        for col in df.columns:
+            if col == '' or col.lower() == 'vazio':
+                novas_colunas.append(f'vazio{vazio_count}')
+                vazio_count += 1
+                col_renomeadas = True
+            else:
+                novas_colunas.append(col)
+        df.columns = novas_colunas
+
+        if col_renomeadas:
+            st.warning("Colunas vazias foram renomeadas para vazio1, vazio2, etc.")
+
+        return df
+    return None
+
+# Função para carregar blacklist do Google Drive
+@st.cache_data(show_spinner=False)
 def carregar_blacklist():
     try:
-        url = "https://drive.google.com/uc?export=download&id=1kEHYl6VOyAFuBpn7rmpbHXqSw_w774ua"  # substitua pelo seu ID
-        response = requests.get(url)
-        blacklist = pd.read_csv(BytesIO(response.content), header=None, names=["Numero"])
-        blacklist["Numero"] = blacklist["Numero"].astype(str).str.strip()
-        return blacklist
+        url = "https://drive.google.com/uc?id=1fMLO1ev3Hev1xANyspv2qIHpLFqvFzU2"  # substitua pelo seu ID
+        file_content = requests.get(url).content
+        df_blacklist = pd.read_csv(BytesIO(file_content), header=None, names=['Numero'], dtype=str)
+        df_blacklist['Numero'] = df_blacklist['Numero'].str.replace(r'\D', '', regex=True)
+        return df_blacklist
     except Exception as e:
         st.error(f"Erro ao carregar a blacklist: {e}")
         return None
 
-# --- AJUSTE DE COLUNAS VAZIAS OU DUPLICADAS ---
-def renomear_colunas_vazias_e_duplicadas(cols):
-    seen = {}
-    vazio_count = 1
-    new_cols = []
-
-    for col in cols:
-        if pd.isna(col) or str(col).strip() == '':
-            col = f'vazio{vazio_count}'
-            vazio_count += 1
-
-        if col in seen:
-            seen[col] += 1
-            col = f"{col}_{seen[col]}"
-        else:
-            seen[col] = 0
-
-        new_cols.append(col)
-    
-    return new_cols
-
-# --- VALIDAÇÃO DE NÚMERO ---
+# Função para validar número
 def validar_numero(numero):
     numero = str(numero).strip()
     numero = re.sub(r'\D', '', numero)
@@ -50,65 +62,65 @@ def validar_numero(numero):
         numero = numero[2:]
 
     if len(numero) < 10 or len(numero) > 11:
-        return False
+        return "Inválido"
 
-    if not numero.startswith(("2", "3", "4", "5", "6", "7", "8", "9")):
-        return False
+    if not numero.startswith(tuple("23456789")):
+        return "Inválido"
 
-    return True
+    return "Válido"
 
-# --- HIGIENIZAÇÃO DE DADOS ---
-def higienizar(df, blacklist, colunas_telefone):
-    for col in colunas_telefone:
-        df[col] = df[col].astype(str).str.strip()
-        df[col] = df[col].apply(lambda x: "" if not validar_numero(x) or x in blacklist["Numero"].values else x)
-    return df
+# App Streamlit
+st.set_page_config(page_title="Higienização de Mailing", layout="centered")
+st.title("📞 Sistema de Higienização de Mailing")
 
-# --- INTERFACE STREAMLIT ---
-st.title("📞 Higienização de Mailing")
-
-uploaded_file = st.file_uploader("📂 Envie seu arquivo de mailing (.csv ou .xlsx)", type=["csv", "xlsx"])
+uploaded_file = st.file_uploader("Carregue seu arquivo de mailing (CSV ou XLSX)", type=["csv", "xlsx"])
 
 if uploaded_file:
-    try:
-        if uploaded_file.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file)
+    df = carregar_arquivo(uploaded_file)
 
-        # Renomear colunas se necessário
-        novas_colunas = renomear_colunas_vazias_e_duplicadas(df.columns)
-        if df.columns.tolist() != novas_colunas:
-            st.warning("⚠️ Algumas colunas foram renomeadas (ex: 'vazio1', 'vazio2') para evitar erros.")
-            df.columns = novas_colunas
-
-        st.subheader("👁️ Prévia dos dados:")
+    if df is not None:
+        st.write("📜 Pré-visualização dos dados:")
         st.dataframe(df.head())
 
-        # Identificar colunas com telefone
         colunas_telefone = [col for col in df.columns if col.lower().startswith("tel") or col.lower().startswith("des")]
 
         if not colunas_telefone:
-            st.error("❌ Nenhuma coluna de telefone encontrada (ex: 'tel1', 'des1')!")
+            st.error("⚠️ Nenhuma coluna de telefone ou destino encontrada!")
         else:
-            st.success(f"📌 Colunas identificadas: {colunas_telefone}")
+            st.success(f"🔍 Colunas encontradas para validação e blacklist: {colunas_telefone}")
 
-            # Carregar blacklist
             blacklist = carregar_blacklist()
+
             if blacklist is not None:
-                df = higienizar(df, blacklist, colunas_telefone)
+                numeros_blacklist = set(blacklist['Numero'].astype(str))
 
-                # Exibir resultado
-                st.subheader("📊 Estatísticas:")
-                total = sum(df[col].astype(str).str.strip().ne('').sum() for col in colunas_telefone)
-                st.write(f"✅ Telefones válidos após higienização: **{total}**")
+                for col in colunas_telefone:
+                    df[col] = df[col].astype(str).str.replace(r'\D', '', regex=True)
+                    df[col] = df[col].apply(lambda x: '' if x in numeros_blacklist else x)
 
-                # Exportar como XLSX
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df.to_excel(writer, index=False, sheet_name="Higienizado")
-                    writer.close()
-                st.download_button("⬇️ Baixar arquivo higienizado (.xlsx)", data=output.getvalue(), file_name="mailing_higienizado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    except Exception as e:
-        st.error(f"❌ Erro ao processar o arquivo: {e}")
+                total_validos = 0
+                total_invalidos = 0
 
+                for col in colunas_telefone:
+                    valids = df[col].apply(validar_numero)
+                    total_validos += (valids == "Válido").sum()
+                    total_invalidos += (valids == "Inválido").sum()
+
+                st.write("📊 **Resumo Estatístico:**")
+                st.write(f"✅ Números válidos após higienização: **{total_validos}**")
+                st.write(f"❌ Números inválidos após higienização: **{total_invalidos}**")
+
+                st.write("📥 Baixar arquivo higienizado:")
+                import xlsxwriter
+                from io import BytesIO
+
+                buffer = BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    df.to_excel(writer, index=False, sheet_name='Higienizado')
+
+                st.download_button(
+                    label="💾 Baixar XLSX",
+                    data=buffer.getvalue(),
+                    file_name="mailing_higienizado.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
