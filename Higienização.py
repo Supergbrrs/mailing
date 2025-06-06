@@ -1,4 +1,10 @@
 import streamlit as st
+import pandas as pd
+import re
+import os
+import requests
+
+import streamlit as st
 
 hide_streamlit_style = """
     <style>
@@ -14,11 +20,7 @@ hide_streamlit_style = """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 
-import streamlit as st
-import pandas as pd
-import re
-import os
-import requests
+
 
 # Função para baixar blacklist do Google Drive (cache local)
 @st.cache_data(show_spinner=False)
