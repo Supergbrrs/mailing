@@ -6,8 +6,8 @@ import re
 def carregar_arquivo(uploaded_file):
     if uploaded_file is not None:
         if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file, header=None)
-            df = ajustar_colunas(df)
+            df = pd.read_csv(uploaded_file, header=None)  # Lê sem cabeçalho para detectar problemas
+            df = ajustar_colunas(df)  # Ajusta colunas automaticamente se necessário
         elif uploaded_file.name.endswith('.xlsx'):
             df = pd.read_excel(uploaded_file)
         else:
@@ -18,24 +18,11 @@ def carregar_arquivo(uploaded_file):
 
 # Função para ajustar colunas quando os dados vêm agrupados em uma única coluna
 def ajustar_colunas(df):
-    if df.shape[1] == 1:
-        df = df.iloc[:, 0].str.split(';', expand=True)
-        df.columns = df.iloc[0]
-        df = df.iloc[1:].reset_index(drop=True)
+    if df.shape[1] == 1:  # Verifica se há apenas uma coluna
+        df = df.iloc[:, 0].str.split(';', expand=True)  # Separa os valores usando ";"
+        df.columns = df.iloc[0]  # Usa a primeira linha como nomes das colunas
+        df = df.iloc[1:].reset_index(drop=True)  # Remove a linha usada como cabeçalho
     return df
-
-# Função para renomear colunas duplicadas e retornar quais foram alteradas
-def renomear_colunas_duplicadas(df):
-    cols = pd.Series(df.columns)
-    renomeadas = {}
-    for dup in cols[cols.duplicated()].unique():
-        dup_indices = cols[cols == dup].index.tolist()
-        for i, idx in enumerate(dup_indices[1:], start=1):
-            novo_nome = f"{cols[idx]}_{i}"
-            renomeadas[cols[idx]] = renomeadas.get(cols[idx], []) + [novo_nome]
-            cols[idx] = novo_nome
-    df.columns = cols
-    return df, renomeadas
 
 # Função para carregar a blacklist
 def carregar_blacklist():
@@ -50,7 +37,7 @@ def carregar_blacklist():
 # Função para validar números
 def validar_numero(numero):
     numero = str(numero).strip()
-    numero = re.sub(r'\D', '', numero)
+    numero = re.sub(r'\D', '', numero)  
 
     if numero.startswith("55") and len(numero) > 10:
         numero = numero[2:]
@@ -72,14 +59,24 @@ if uploaded_file:
     df = carregar_arquivo(uploaded_file)
     
     if df is not None:
-        df, renomeadas = renomear_colunas_duplicadas(df)
-        
-        if renomeadas:
-            mensagens = []
-            for original, novos in renomeadas.items():
-                mensagens.append(f"Coluna '{original}' renomeada para: {', '.join(novos)}")
-            st.warning("Colunas duplicadas foram renomeadas para evitar erros:\n\n" + "\n".join(mensagens))
-        
+        # Verifica e renomeia colunas duplicadas
+        if df.columns.duplicated().any():
+            # Renomeia colunas duplicadas adicionando sufixos
+            new_cols = []
+            seen = {}
+            for col in df.columns:
+                if col == '':
+                    col = 'vazio'
+                if col in seen:
+                    seen[col] += 1
+                    new_col = f"{col}_{seen[col]}"
+                else:
+                    seen[col] = 0
+                    new_col = col
+                new_cols.append(new_col)
+            df.columns = new_cols
+            st.warning("⚠️ Foram encontradas colunas duplicadas no arquivo e elas foram renomeadas automaticamente.")
+
         st.write("📜 **Visualização dos dados do mailing:**")
         st.dataframe(df.head())
 
@@ -95,23 +92,19 @@ if uploaded_file:
             # Carregando blacklist automaticamente
             blacklist = carregar_blacklist()
             if blacklist is not None:
+                blacklist_set = set(blacklist["Numero"].values)  # Busca rápida
+
                 for coluna in colunas_telefone + colunas_destino:
                     df[coluna] = df[coluna].astype(str)  # Converte para string
-                    df[coluna] = df[coluna].apply(lambda x: "" if x in blacklist["Numero"].values else x)  # Remove números da blacklist
-                    
-                    # Aplicando validação
-                    # Se não quiser criar colunas Status, pode comentar a linha abaixo
-                    # df[f"Status_{coluna}"] = df[coluna].apply(validar_numero)
+                    df[coluna] = df[coluna].apply(lambda x: "" if x in blacklist_set else x)
             
-            # Exibir estatísticas
-            total_validos = sum(
-                len(df[df[coluna].apply(validar_numero) == "Válido"])
-                for coluna in colunas_telefone + colunas_destino
-            )
-            total_invalidos = sum(
-                len(df[df[coluna].apply(validar_numero) == "Inválido"])
-                for coluna in colunas_telefone + colunas_destino
-            )
+            # Contagem números válidos e inválidos (sem criar colunas status)
+            total_validos = 0
+            total_invalidos = 0
+            for coluna in colunas_telefone + colunas_destino:
+                valid_flags = df[coluna].apply(lambda x: validar_numero(x) == "Válido")
+                total_validos += valid_flags.sum()
+                total_invalidos += (~valid_flags).sum()
 
             st.write("📊 **Resumo Estatístico:**")
             st.write(f"✅ Números válidos após higienização: **{total_validos}**")
@@ -120,15 +113,17 @@ if uploaded_file:
             st.write("📜 **Visualização final do arquivo:**")
             st.dataframe(df)
 
-            # Download do arquivo em XLSX
+            # Gerar arquivo Excel para download
             import io
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False)
+                df.to_excel(writer, index=False, sheet_name='mailing_higienizado')
+                writer.save()
+            buffer.seek(0)
+
             st.download_button(
-                label="💾 Baixar mailing higienizado (.xlsx)",
-                data=buffer.getvalue(),
+                label="💾 Baixar mailing higienizado (XLSX)",
+                data=buffer,
                 file_name="mailing_higienizado.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-
