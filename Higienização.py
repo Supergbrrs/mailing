@@ -52,7 +52,7 @@ def carregar_blacklist():
         st.error(f"Erro ao carregar a blacklist: {e}")
         return None
 
-# Função para validar número
+# Função para validar número corretamente
 def validar_numero(numero):
     numero = str(numero).strip()
     numero = re.sub(r'\D', '', numero)
@@ -63,7 +63,9 @@ def validar_numero(numero):
     if len(numero) < 10 or len(numero) > 11:
         return "Inválido"
 
-    if not numero.startswith(tuple("23456789")):
+    # Verifica o primeiro dígito do número (sem DDD)
+    numero_sem_ddd = numero[-9:]
+    if not numero_sem_ddd[0] in "23456789":
         return "Inválido"
 
     return "Válido"
@@ -93,18 +95,19 @@ if uploaded_file:
             if blacklist is not None:
                 numeros_blacklist = set(blacklist['Numero'].astype(str))
 
-                for col in colunas_telefone:
-                    df[col] = df[col].astype(str).str.replace(r'\D', '', regex=True)
-                    df[col] = df[col].apply(lambda x: '' if x in numeros_blacklist else x)
-
-                # 🚨 NOVO: remover números inválidos
-                for col in colunas_telefone:
-                    df[col] = df[col].apply(lambda x: x if validar_numero(x) == "Válido" else '')
-
                 total_validos = 0
                 total_invalidos = 0
 
                 for col in colunas_telefone:
+                    df[col] = df[col].astype(str).str.replace(r'\D', '', regex=True)
+
+                    # Remove números da blacklist
+                    df[col] = df[col].apply(lambda x: '' if x in numeros_blacklist else x)
+
+                    # Remove números inválidos
+                    df[col] = df[col].apply(lambda x: x if validar_numero(x) == "Válido" else '')
+
+                    # Contar válidos e inválidos
                     valids = df[col].apply(validar_numero)
                     total_validos += (valids == "Válido").sum()
                     total_invalidos += (valids == "Inválido").sum()
@@ -124,3 +127,4 @@ if uploaded_file:
                     file_name="mailing_higienizado.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
+
