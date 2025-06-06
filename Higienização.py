@@ -4,7 +4,6 @@ import re
 import requests
 from io import BytesIO
 
-# Função para carregar arquivos
 @st.cache_data(show_spinner=False)
 def carregar_arquivo(uploaded_file):
     if uploaded_file is not None:
@@ -39,7 +38,6 @@ def carregar_arquivo(uploaded_file):
         return df
     return None
 
-# Função para carregar blacklist do Google Drive
 @st.cache_data(show_spinner=False)
 def carregar_blacklist():
     try:
@@ -52,7 +50,6 @@ def carregar_blacklist():
         st.error(f"Erro ao carregar a blacklist: {e}")
         return None
 
-# Função para validar número corretamente
 def validar_numero(numero):
     numero = str(numero).strip()
     numero = re.sub(r'\D', '', numero)
@@ -63,14 +60,12 @@ def validar_numero(numero):
     if len(numero) < 10 or len(numero) > 11:
         return "Inválido"
 
-    # Verifica o primeiro dígito do número (sem DDD)
     numero_sem_ddd = numero[-9:]
     if not numero_sem_ddd[0] in "23456789":
         return "Inválido"
 
     return "Válido"
 
-# App Streamlit
 st.set_page_config(page_title="Higienização de Mailing", layout="centered")
 st.title("📞 Sistema de Higienização de Mailing")
 
@@ -97,14 +92,18 @@ if uploaded_file:
 
                 total_validos = 0
                 total_invalidos = 0
+                total_blacklist = 0
 
                 for col in colunas_telefone:
                     df[col] = df[col].astype(str).str.replace(r'\D', '', regex=True)
 
-                    # Remove números da blacklist
+                    # Contar números na blacklist
+                    total_blacklist += df[col].isin(numeros_blacklist).sum()
+
+                    # Remover números da blacklist
                     df[col] = df[col].apply(lambda x: '' if x in numeros_blacklist else x)
 
-                    # Remove números inválidos
+                    # Remover números inválidos
                     df[col] = df[col].apply(lambda x: x if validar_numero(x) == "Válido" else '')
 
                     # Contar válidos e inválidos
@@ -115,6 +114,7 @@ if uploaded_file:
                 st.write("📊 **Resumo Estatístico:**")
                 st.write(f"✅ Números válidos após higienização: **{total_validos}**")
                 st.write(f"❌ Números inválidos após higienização: **{total_invalidos}**")
+                st.write(f"⛔ Números removidos por estarem na blacklist: **{total_blacklist}**")
 
                 st.write("📥 Baixar arquivo higienizado:")
                 buffer = BytesIO()
@@ -127,4 +127,3 @@ if uploaded_file:
                     file_name="mailing_higienizado.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
-
