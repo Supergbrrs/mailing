@@ -3,7 +3,6 @@ import pandas as pd
 import re
 import requests
 from io import BytesIO
-from io import StringIO
 
 # Função para carregar arquivos
 @st.cache_data(show_spinner=False)
@@ -44,7 +43,7 @@ def carregar_arquivo(uploaded_file):
 @st.cache_data(show_spinner=False)
 def carregar_blacklist():
     try:
-        url = "https://drive.google.com/uc?id=1fMLO1ev3Hev1xANyspv2qIHpLFqvFzU2"  # substitua pelo seu ID
+        url = "https://drive.google.com/uc?id=1fMLO1ev3Hev1xANyspv2qIHpLFqvFzU2"
         file_content = requests.get(url).content
         df_blacklist = pd.read_csv(BytesIO(file_content), header=None, names=['Numero'], dtype=str)
         df_blacklist['Numero'] = df_blacklist['Numero'].str.replace(r'\D', '', regex=True)
@@ -98,22 +97,23 @@ if uploaded_file:
                     df[col] = df[col].astype(str).str.replace(r'\D', '', regex=True)
                     df[col] = df[col].apply(lambda x: '' if x in numeros_blacklist else x)
 
+                # 🚨 NOVO: remover números inválidos
+                for col in colunas_telefone:
+                    df[col] = df[col].apply(lambda x: x if validar_numero(x) == "Válido" else '')
+
                 total_validos = 0
                 total_invalidos = 0
 
                 for col in colunas_telefone:
                     valids = df[col].apply(validar_numero)
                     total_validos += (valids == "Válido").sum()
-                    total_invalidos += (valids == "Inválido").sum()
+                    total_invalidos += (validar_numero(x) == "Inválido" for x in df[col]).__reduce__(lambda x, y: x + y)
 
                 st.write("📊 **Resumo Estatístico:**")
                 st.write(f"✅ Números válidos após higienização: **{total_validos}**")
                 st.write(f"❌ Números inválidos após higienização: **{total_invalidos}**")
 
                 st.write("📥 Baixar arquivo higienizado:")
-                import xlsxwriter
-                from io import BytesIO
-
                 buffer = BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     df.to_excel(writer, index=False, sheet_name='Higienizado')
